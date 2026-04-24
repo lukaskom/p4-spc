@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { breweryTenant } from '../demo/tenant-config';
+import { useTenantConfig } from '../api/hooks';
 
 function navClass({ isActive }: { isActive: boolean }): string {
   return (
@@ -11,6 +11,10 @@ function navClass({ isActive }: { isActive: boolean }): string {
 }
 
 export function Layout(): React.ReactElement {
+  const { data } = useTenantConfig();
+  const tenantName = data?.config.tenantName ?? '…';
+  const version = data?.version;
+
   return (
     <div className="min-h-full flex flex-col">
       <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
@@ -18,8 +22,13 @@ export function Layout(): React.ReactElement {
           <div className="flex items-baseline gap-2">
             <span className="font-semibold text-slate-900 text-lg">p4-spc</span>
             <span className="text-xs text-slate-500 uppercase tracking-wider">
-              {breweryTenant.tenantName}
+              {tenantName}
             </span>
+            {version !== undefined && (
+              <span className="text-[10px] text-slate-400 font-mono">
+                config v{version}
+              </span>
+            )}
           </div>
           <nav className="flex items-center gap-1">
             <NavLink to="/" end className={navClass}>
@@ -34,9 +43,12 @@ export function Layout(): React.ReactElement {
             <NavLink to="/measurements" className={navClass}>
               Zadat měření
             </NavLink>
+            <NavLink to="/admin" className={navClass}>
+              Admin
+            </NavLink>
           </nav>
           <div className="ml-auto text-xs text-slate-500">
-            Demo — data jsou generována lokálně, nic se neukládá.
+            Data z DB · API na :3100
           </div>
         </div>
       </header>

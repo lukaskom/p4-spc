@@ -1,5 +1,5 @@
 import { capability } from '@p4-spc/spc-engine';
-import { label, type TenantConfig } from '../demo/tenant-config';
+import { label, capabilityLevel, type TenantConfig } from '@p4-spc/config-sdk';
 
 interface CapabilityCardProps {
   readonly values: readonly number[];
@@ -23,23 +23,31 @@ function fmt(n: number | null): string {
   return n.toFixed(2);
 }
 
-function pillColor(value: number | null): string {
-  if (value === null) return 'bg-slate-100 text-slate-600';
-  if (value >= 1.67) return 'bg-emerald-100 text-emerald-800';
-  if (value >= 1.33) return 'bg-lime-100 text-lime-800';
-  if (value >= 1.0) return 'bg-amber-100 text-amber-800';
-  return 'bg-rose-100 text-rose-800';
+function pillColor(level: 'excellent' | 'good' | 'marginal' | 'poor' | 'unknown'): string {
+  switch (level) {
+    case 'excellent':
+      return 'bg-emerald-100 text-emerald-800';
+    case 'good':
+      return 'bg-lime-100 text-lime-800';
+    case 'marginal':
+      return 'bg-amber-100 text-amber-800';
+    case 'poor':
+      return 'bg-rose-100 text-rose-800';
+    default:
+      return 'bg-slate-100 text-slate-600';
+  }
 }
 
 export function CapabilityCard({
   values,
-  subgroupSize = 5,
+  subgroupSize,
   lsl,
   usl,
   target,
   tenant,
 }: CapabilityCardProps): React.ReactElement {
-  const subgroups = chunk(values, subgroupSize);
+  const size = subgroupSize ?? tenant.spc.subgroupSize;
+  const subgroups = chunk(values, size);
   const result = capability({ values, subgroups, lsl, usl, target });
 
   const items: Array<{ key: string; value: number | null }> = [
@@ -55,7 +63,7 @@ export function CapabilityCard({
       <div className="grid grid-cols-4 gap-3">
         {items.map((item) => (
           <div key={item.key} className="text-center">
-            <div className={'inline-block px-2 py-1 rounded-md text-xs ' + pillColor(item.value)}>
+            <div className={'inline-block px-2 py-1 rounded-md text-xs ' + pillColor(capabilityLevel(tenant, item.value))}>
               {label(tenant, item.key)}
             </div>
             <div className="text-2xl font-semibold text-slate-900 mt-1 font-mono">
@@ -66,7 +74,7 @@ export function CapabilityCard({
       </div>
       <div className="mt-3 text-xs text-slate-500 flex flex-wrap gap-x-4 gap-y-1">
         <span>n={result.sampleCount}</span>
-        <span>subgrupa: {subgroupSize}</span>
+        <span>subgrupa: {size}</span>
         <span>σ within: {result.sigmaWithin?.toFixed(3) ?? '—'}</span>
         <span>σ overall: {result.sigmaOverall.toFixed(3)}</span>
         <span>

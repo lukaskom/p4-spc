@@ -1,0 +1,116 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATA_PLANE_DATABASE_URL")
+}
+
+model Part {
+  id            String   @id @default(uuid())
+  partNumber    String
+  description   String?
+  abbreviation  String?
+  drawingNumber String?
+  variant       String?
+  metadata      Json     @default("{}")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  characteristics Characteristic[]
+
+  @@unique([partNumber, variant])
+  @@map("parts")
+}
+
+model Characteristic {
+  id             String   @id @default(uuid())
+  partId         String
+  code           String
+  description    String?
+  type           Int
+  unit           String?
+  decimals       Int?
+  nominal        Float?
+  target         Float?
+  lowerSpecLimit Float?
+  upperSpecLimit Float?
+  toleranceType  Int?
+  group          String?
+  metadata       Json     @default("{}")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  part         Part               @relation(fields: [partId], references: [id], onDelete: Cascade)
+  measurements Measurement[]
+  batches      MeasurementBatch[]
+
+  @@unique([partId, code])
+  @@map("characteristics")
+}
+
+model MeasurementBatch {
+  id               String   @id @default(uuid())
+  characteristicId String
+  subgroupSize     Int
+  collectedAt      DateTime
+  metadata         Json     @default("{}")
+
+  characteristic Characteristic @relation(fields: [characteristicId], references: [id], onDelete: Cascade)
+  measurements   Measurement[]
+
+  @@map("measurement_batches")
+}
+
+model Measurement {
+  id               String   @id @default(uuid())
+  characteristicId String
+  batchId          String?
+  value            Float
+  status           Int      @default(0)
+  measuredAt       DateTime
+  operatorId       String?
+  machineId        String?
+  gageId           String?
+  aqdefKFields     Json     @default("{}")
+  extensions       Json     @default("{}")
+  createdAt        DateTime @default(now())
+
+  characteristic Characteristic    @relation(fields: [characteristicId], references: [id], onDelete: Cascade)
+  batch          MeasurementBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+
+  @@index([characteristicId, measuredAt])
+  @@map("measurements")
+}
+
+model Catalog {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  name      String
+  scope     String
+  version   Int      @default(1)
+  isSystem  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  items CatalogItem[]
+
+  @@map("catalogs")
+}
+
+model CatalogItem {
+  id         String  @id @default(uuid())
+  catalogId  String
+  code       String
+  label      String
+  parentCode String?
+  order      Int     @default(0)
+  active     Boolean @default(true)
+  metadata   Json    @default("{}")
+
+  catalog Catalog @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+
+  @@unique([catalogId, code])
+  @@map("catalog_items")
+}

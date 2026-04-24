@@ -56,6 +56,7 @@ crash.*.log
 # Prisma
 prisma/*.db
 prisma/*.db-journal
+packages/*/generated/
 
 # Temp
 tmp/

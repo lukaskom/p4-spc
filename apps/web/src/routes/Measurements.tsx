@@ -1,204 +1,107 @@
 import { useMemo, useState } from 'react';
-import { findScale, products, scales } from '../demo/brewery';
-import { latestDensity, volumeFromMassAndDensity } from '../demo/measurements';
-import { breweryTenant, label } from '../demo/tenant-config';
+import { useProducts, useTenantConfig } from '../api/hooks';
+import { generateDensityReadings, latestDensity } from '../demo/lab';
+import { scales } from '../demo/static';
+import { DynamicForm } from '../components/DynamicForm';
 import { StatusBadge } from '../components/StatusBadge';
 
 type SubmittedRow = {
   id: string;
-  productId: string;
-  gage: string;
-  massG: number;
-  densityGPerMl: number;
-  volumeMl: number;
+  productLabel: string;
+  values: Record<string, unknown>;
+  submittedAt: string;
   status: 'ok' | 'warning' | 'reject';
-  operator: string;
-  measuredAt: string;
 };
 
-function statusFor(volume: number, lsl: number, usl: number): SubmittedRow['status'] {
-  if (volume < lsl || volume > usl) return 'reject';
-  const m = (usl - lsl) * 0.1;
-  if (volume < lsl + m || volume > usl - m) return 'warning';
-  return 'ok';
-}
-
 export function MeasurementsPage(): React.ReactElement {
-  const [productId, setProductId] = useState<string>(products[0]?.id ?? '');
-  const [gage, setGage] = useState<string>(scales[0]?.id ?? '');
-  const [mass, setMass] = useState<string>('520.50');
-  const [operator, setOperator] = useState<string>('');
+  const { data: tenant } = useTenantConfig();
+  const { data: products } = useProducts();
+  const densityReadings = useMemo(() => (products ? generateDensityReadings(products) : {}), [products]);
+
   const [submitted, setSubmitted] = useState<SubmittedRow[]>([]);
-  const [error, setError] = useState<string | null>(null);
 
-  const selectedProduct = useMemo(() => products.find((p) => p.id === productId), [productId]);
-  const density = selectedProduct ? latestDensity(selectedProduct.id) : undefined;
-  const densityG = density?.densityGPerMl ?? selectedProduct?.referenceDensityGPerMl ?? 1;
+  if (!tenant || !products) return <div className="text-slate-500 text-sm">Načítám…</div>;
 
-  const massNum = Number(mass);
-  const live = useMemo(() => {
-    if (!selectedProduct) return null;
-    if (!Number.isFinite(massNum) || massNum <= 0) return null;
-    const volume = volumeFromMassAndDensity(massNum, densityG);
-    return {
-      volume,
-      status: statusFor(volume, selectedProduct.lslMl, selectedProduct.uslMl),
-    };
-  }, [massNum, densityG, selectedProduct]);
+  const forms = tenant.config.forms;
+  const formIds = Object.keys(forms);
+  const formDef = formIds.length > 0 ? forms[formIds[0]!]! : null;
 
-  function submit(e: React.FormEvent): void {
-    e.preventDefault();
-    setError(null);
-    if (!selectedProduct) {
-      setError('Vyber produkt.');
-      return;
-    }
-    if (!Number.isFinite(massNum) || massNum <= 0) {
-      setError('Hmotnost musí být kladné číslo.');
-      return;
-    }
-    if (operator.trim().length < 2) {
-      setError('Vyplň jméno operátora.');
-      return;
-    }
-    const volume = volumeFromMassAndDensity(massNum, densityG);
-    const row: SubmittedRow = {
-      id: `m-${Date.now()}`,
-      productId: selectedProduct.id,
-      gage,
-      massG: Number(massNum.toFixed(2)),
-      densityGPerMl: Number(densityG.toFixed(4)),
-      volumeMl: Number(volume.toFixed(2)),
-      status: statusFor(volume, selectedProduct.lslMl, selectedProduct.uslMl),
-      operator,
-      measuredAt: new Date().toISOString(),
-    };
-    setSubmitted((prev) => [row, ...prev].slice(0, 20));
+  if (!formDef) {
+    return (
+      <div className="bg-amber-50 border border-amber-200 rounded-md p-4 text-sm text-amber-900">
+        V konfiguraci nenalezen žádný formulář. Vytvoř ho v <a className="underline" href="/admin">Adminu</a>.
+      </div>
+    );
+  }
+
+  function statusForVolume(volume: number, productId: string): 'ok' | 'warning' | 'reject' {
+    const p = products?.find((x) => x.id === productId);
+    const lsl = p?.characteristic?.lsl ?? null;
+    const usl = p?.characteristic?.usl ?? null;
+    if (lsl === null || usl === null) return 'ok';
+    if (volume < lsl || volume > usl) return 'reject';
+    const margin = (usl - lsl) * 0.1;
+    if (volume < lsl + margin || volume > usl - margin) return 'warning';
+    return 'ok';
+  }
+
+  const context = {
+    products: products.map((p) => ({
+      id: p.id,
+      label: `${p.partNumber} — ${p.description ?? ''}`,
+    })),
+    gages: scales.map((s) => ({ id: s.id, label: `${s.id} — ${s.manufacturer} ${s.model}` })),
+    readers: {
+      latestLabDensity: (values: Record<string, unknown>): number | undefined => {
+        const productId = values.productId as string | undefined;
+        if (!productId) return undefined;
+        const readings = densityReadings[productId];
+        const d = latestDensity(readings);
+        if (d) return d.densityGPerMl;
+        const p = products.find((x) => x.id === productId);
+        return (p?.metadata.referenceDensity as number | undefined) ?? undefined;
+      },
+    },
+  };
+
+  function handleSubmit(values: Record<string, unknown>): void {
+    const resultFieldId = formDef?.resultField;
+    const statusFieldId = formDef?.statusFromField ?? resultFieldId;
+    const result = resultFieldId ? Number(values[resultFieldId]) : NaN;
+    const productId = values.productId as string | undefined;
+    const status: 'ok' | 'warning' | 'reject' =
+      statusFieldId && productId && Number.isFinite(result)
+        ? statusForVolume(result, productId)
+        : 'ok';
+    const p = products?.find((x) => x.id === productId);
+    setSubmitted((prev) =>
+      [
+        {
+          id: `m-${Date.now()}`,
+          productLabel: p ? `${p.partNumber} — ${p.description ?? ''}` : '?',
+          values,
+          submittedAt: new Date().toISOString(),
+          status,
+        },
+        ...prev,
+      ].slice(0, 20),
+    );
   }
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Zadat měření</h1>
-        <p className="text-sm text-slate-600 mt-1">
-          Demo formulář. Labely jsou řízené konfigurací tenanta (pivovar), takže místo „Part
-          number" vidíš „{label(breweryTenant, 'partNumber')}". Objem se počítá živě z hmotnosti
-          a aktuální hustoty z laboratoře.
+        <h1 className="text-2xl font-semibold text-slate-900">{formDef.name}</h1>
+        {formDef.description && (
+          <p className="text-sm text-slate-600 mt-1">{formDef.description}</p>
+        )}
+        <p className="text-xs text-slate-500 mt-2">
+          Formulář je renderován z tenant configu ({formDef.fields.length} polí). Labely, typy,
+          výpočty — vše mění admin přes <a className="underline text-blue-700" href="/admin">Admin</a>.
         </p>
       </div>
 
-      <form
-        onSubmit={submit}
-        className="bg-white border border-slate-200 rounded-lg p-5 grid grid-cols-1 md:grid-cols-2 gap-4"
-      >
-        <div className="space-y-1">
-          <label className="text-xs uppercase tracking-wider text-slate-600">
-            {label(breweryTenant, 'partNumber')}
-          </label>
-          <select
-            value={productId}
-            onChange={(e) => setProductId(e.target.value)}
-            className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm bg-white"
-          >
-            {products.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.sapId} — {p.description}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="space-y-1">
-          <label className="text-xs uppercase tracking-wider text-slate-600">
-            {label(breweryTenant, 'gage')}
-          </label>
-          <select
-            value={gage}
-            onChange={(e) => setGage(e.target.value)}
-            className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm bg-white"
-          >
-            {scales.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.id} — {s.manufacturer} {s.model}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="space-y-1">
-          <label className="text-xs uppercase tracking-wider text-slate-600">Hmotnost [g]</label>
-          <input
-            type="number"
-            step="0.01"
-            value={mass}
-            onChange={(e) => setMass(e.target.value)}
-            className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm font-mono"
-          />
-          <div className="text-xs text-slate-500">
-            Načteno z {findScale(gage)?.manufacturer ?? 'váhy'} (v reálu přes desktop appku
-            a CUS).
-          </div>
-        </div>
-
-        <div className="space-y-1">
-          <label className="text-xs uppercase tracking-wider text-slate-600">
-            Hustota z laboratoře [g/ml]
-          </label>
-          <input
-            type="text"
-            readOnly
-            value={densityG.toFixed(4)}
-            className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm font-mono bg-slate-50 text-slate-600"
-          />
-          <div className="text-xs text-slate-500">
-            {density ? `Aktualizováno ${new Date(density.measuredAt).toLocaleString('cs-CZ')}` : 'Referenční hodnota'}
-          </div>
-        </div>
-
-        <div className="space-y-1 md:col-span-2">
-          <label className="text-xs uppercase tracking-wider text-slate-600">
-            {label(breweryTenant, 'operator')}
-          </label>
-          <input
-            type="text"
-            value={operator}
-            onChange={(e) => setOperator(e.target.value)}
-            placeholder="např. Jana Nováková"
-            className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
-          />
-        </div>
-
-        <div className="md:col-span-2 p-4 bg-slate-900 text-white rounded-md">
-          <div className="text-xs uppercase tracking-wider text-slate-400">
-            Živý výpočet (nominál {selectedProduct?.nominalMl ?? '—'} ml, spec{' '}
-            {selectedProduct?.lslMl}–{selectedProduct?.uslMl} ml)
-          </div>
-          {live ? (
-            <div className="mt-2 flex items-baseline gap-3">
-              <div className="text-3xl font-semibold font-mono">{live.volume.toFixed(2)}</div>
-              <div className="text-slate-400">ml</div>
-              <StatusBadge status={live.status} />
-            </div>
-          ) : (
-            <div className="mt-2 text-slate-400 text-sm">Zadej hmotnost.</div>
-          )}
-        </div>
-
-        {error && (
-          <div className="md:col-span-2 bg-rose-50 border border-rose-200 text-rose-900 text-sm rounded-md px-3 py-2">
-            {error}
-          </div>
-        )}
-
-        <div className="md:col-span-2">
-          <button
-            type="submit"
-            className="inline-flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-slate-800"
-          >
-            Uložit měření (demo – jen do tabulky níže)
-          </button>
-        </div>
-      </form>
+      <DynamicForm def={formDef} context={context} onSubmit={handleSubmit} />
 
       <div>
         <h2 className="text-sm font-medium text-slate-700 uppercase tracking-wider mb-3">
@@ -214,37 +117,43 @@ export function MeasurementsPage(): React.ReactElement {
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr className="text-left text-xs uppercase tracking-wider text-slate-600">
                   <th className="px-4 py-2">Kdy</th>
-                  <th className="px-4 py-2">{label(breweryTenant, 'partNumber')}</th>
-                  <th className="px-4 py-2">{label(breweryTenant, 'gage')}</th>
-                  <th className="px-4 py-2 text-right">Hmot. [g]</th>
-                  <th className="px-4 py-2 text-right">Hust. [g/ml]</th>
-                  <th className="px-4 py-2 text-right">Objem [ml]</th>
-                  <th className="px-4 py-2">Op.</th>
+                  <th className="px-4 py-2">Produkt</th>
+                  {formDef.fields
+                    .filter((f) => !['productId'].includes(f.id))
+                    .map((f) => (
+                      <th key={f.id} className="px-4 py-2">
+                        {f.label}
+                      </th>
+                    ))}
                   <th className="px-4 py-2">Stav</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {submitted.map((r) => {
-                  const p = products.find((x) => x.id === r.productId);
-                  return (
-                    <tr key={r.id}>
-                      <td className="px-4 py-2 text-slate-600">
-                        {new Date(r.measuredAt).toLocaleTimeString('cs-CZ')}
-                      </td>
-                      <td className="px-4 py-2 font-mono">{p?.sapId}</td>
-                      <td className="px-4 py-2 text-slate-600">{r.gage}</td>
-                      <td className="px-4 py-2 font-mono text-right">{r.massG.toFixed(2)}</td>
-                      <td className="px-4 py-2 font-mono text-right">{r.densityGPerMl.toFixed(4)}</td>
-                      <td className="px-4 py-2 font-mono text-right font-semibold">
-                        {r.volumeMl.toFixed(2)}
-                      </td>
-                      <td className="px-4 py-2">{r.operator}</td>
-                      <td className="px-4 py-2">
-                        <StatusBadge status={r.status} />
-                      </td>
-                    </tr>
-                  );
-                })}
+                {submitted.map((r) => (
+                  <tr key={r.id}>
+                    <td className="px-4 py-2 text-slate-600">
+                      {new Date(r.submittedAt).toLocaleTimeString('cs-CZ')}
+                    </td>
+                    <td className="px-4 py-2">{r.productLabel}</td>
+                    {formDef.fields
+                      .filter((f) => !['productId'].includes(f.id))
+                      .map((f) => {
+                        const v = r.values[f.id];
+                        let content: string = '';
+                        if (v === undefined || v === null || Number.isNaN(v)) content = '—';
+                        else if (typeof v === 'number') content = v.toFixed(2);
+                        else content = String(v);
+                        return (
+                          <td key={f.id} className="px-4 py-2 font-mono">
+                            {content}
+                          </td>
+                        );
+                      })}
+                    <td className="px-4 py-2">
+                      <StatusBadge status={r.status} />
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

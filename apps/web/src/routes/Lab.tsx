@@ -1,6 +1,7 @@
-import { products } from '../demo/brewery';
-import { densityReadingsByProduct, latestDensity, volumeFromMassAndDensity } from '../demo/measurements';
-import { breweryTenant } from '../demo/tenant-config';
+import { useMemo } from 'react';
+import { useProducts, useTenantConfig } from '../api/hooks';
+import { generateDensityReadings, latestDensity, volumeFromMassAndDensity } from '../demo/lab';
+import { label } from '@p4-spc/config-sdk';
 
 function fmtCs(iso: string): string {
   return new Date(iso).toLocaleString('cs-CZ', {
@@ -12,16 +13,24 @@ function fmtCs(iso: string): string {
 }
 
 export function LabPage(): React.ReactElement {
+  const { data: tenant } = useTenantConfig();
+  const { data: products } = useProducts();
   const sampleMass = 520;
+
+  const densityReadings = useMemo(() => (products ? generateDensityReadings(products) : {}), [products]);
+
+  if (!tenant || !products) return <div className="text-slate-500 text-sm">Načítám…</div>;
+
+  const domain = tenant.config.domain.density as { unit?: string; referenceTemperatureC?: number } | undefined;
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold text-slate-900">Laboratoř — hustota</h1>
         <p className="text-sm text-slate-600 mt-1">
-          Laboratoř měří hustotu každého produktu v g/ml (referenční teplota{' '}
-          {breweryTenant.density.referenceTemperatureC} °C). Hodnoty se periodicky aktualizují
-          a ovlivňují převod hmotnosti na objem u každého měření z váhy.
+          Laboratoř měří hustotu každého produktu v {domain?.unit ?? 'g/ml'} (referenční teplota{' '}
+          {domain?.referenceTemperatureC ?? 20} °C). Hodnoty se periodicky aktualizují a ovlivňují převod
+          hmotnosti na objem u každého měření z váhy.
         </p>
       </div>
 
@@ -30,37 +39,39 @@ export function LabPage(): React.ReactElement {
           Živá konverze hmotnost → objem
         </div>
         <div className="mt-2 text-sm text-slate-300">
-          Pro hypotetickou hmotnost <span className="font-mono text-white">{sampleMass} g</span>{' '}
-          a aktuální hustotu z laboratoře:
+          Pro hypotetickou hmotnost <span className="font-mono text-white">{sampleMass} g</span> a aktuální
+          hustotu z laboratoře:
         </div>
         <table className="mt-3 min-w-full text-sm">
           <thead>
             <tr className="text-left text-xs uppercase tracking-wider text-slate-400">
-              <th className="py-1 pr-4">SAP ID</th>
+              <th className="py-1 pr-4">{label(tenant.config, 'partNumber')}</th>
               <th className="py-1 pr-4">Produkt</th>
-              <th className="py-1 pr-4 text-right">Hustota [g/ml]</th>
+              <th className="py-1 pr-4 text-right">{label(tenant.config, 'density')} [g/ml]</th>
               <th className="py-1 pr-4 text-right">Referenční</th>
-              <th className="py-1 pr-4 text-right">Vypočtený objem [ml]</th>
+              <th className="py-1 pr-4 text-right">
+                {label(tenant.config, 'volume')} [ml]
+              </th>
               <th className="py-1 text-right">Odchylka od nominálu</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-700">
             {products.map((p) => {
-              const d = latestDensity(p.id);
-              const density = d?.densityGPerMl ?? p.referenceDensityGPerMl;
+              const d = latestDensity(densityReadings[p.id]);
+              const reference = (p.metadata.referenceDensity as number | undefined) ?? 1.04;
+              const density = d?.densityGPerMl ?? reference;
               const volume = volumeFromMassAndDensity(sampleMass, density);
-              const deviation = volume - p.nominalMl;
+              const nominal = p.characteristic?.nominal ?? 500;
+              const deviation = volume - nominal;
               return (
                 <tr key={p.id}>
-                  <td className="py-1 pr-4 font-mono">{p.sapId}</td>
+                  <td className="py-1 pr-4 font-mono">{p.partNumber}</td>
                   <td className="py-1 pr-4">{p.description}</td>
                   <td className="py-1 pr-4 font-mono text-right">{density.toFixed(4)}</td>
                   <td className="py-1 pr-4 font-mono text-right text-slate-400">
-                    {p.referenceDensityGPerMl.toFixed(4)}
+                    {reference.toFixed(4)}
                   </td>
-                  <td className="py-1 pr-4 font-mono text-right font-semibold">
-                    {volume.toFixed(2)}
-                  </td>
+                  <td className="py-1 pr-4 font-mono text-right font-semibold">{volume.toFixed(2)}</td>
                   <td
                     className={
                       'py-1 font-mono text-right ' +
@@ -87,12 +98,12 @@ export function LabPage(): React.ReactElement {
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {products.map((p) => {
-            const readings = densityReadingsByProduct[p.id] ?? [];
+            const readings = densityReadings[p.id] ?? [];
             return (
               <div key={p.id} className="bg-white border border-slate-200 rounded-lg overflow-hidden">
                 <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
                   <div className="text-xs text-slate-500 uppercase tracking-wider">
-                    {p.sapId}
+                    {p.partNumber}
                   </div>
                   <div className="font-medium text-slate-900">{p.description}</div>
                 </div>

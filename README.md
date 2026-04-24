@@ -33,7 +33,7 @@ pnpm dev
 ```
 
 Mailhog UI: <http://localhost:8025>
-Postgres: `postgresql://p4spc:p4spc_dev@localhost:5432/p4spc_control`
+Postgres: `postgresql://p4spc:p4spc_dev@localhost:5433/p4spc_control`
 Redis: `localhost:6379`
 
 ## Struktura monorepa

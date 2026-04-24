@@ -1,0 +1,65 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("CONTROL_PLANE_DATABASE_URL")
+}
+
+model Organization {
+  id                   String   @id @default(uuid())
+  slug                 String   @unique
+  name                 String
+  dataPlaneDatabaseUrl String
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  configs     TenantConfig[]
+  memberships Membership[]
+
+  @@map("organizations")
+}
+
+model User {
+  id          String   @id @default(uuid())
+  email       String   @unique
+  displayName String
+  createdAt   DateTime @default(now())
+
+  memberships Membership[]
+
+  @@map("users")
+}
+
+model Membership {
+  id             String   @id @default(uuid())
+  userId         String
+  organizationId String
+  role           String
+  createdAt      DateTime @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@map("memberships")
+}
+
+model TenantConfig {
+  id             String   @id @default(uuid())
+  organizationId String
+  version        Int      @default(1)
+  active         Boolean  @default(true)
+  document       Json
+  notes          String?
+  createdAt      DateTime @default(now())
+  createdBy      String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, version])
+  @@index([organizationId, active])
+  @@map("tenant_configs")
+}
