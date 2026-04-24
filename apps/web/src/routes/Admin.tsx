@@ -29,6 +29,12 @@ export function AdminLayout(): React.ReactElement {
         <NavLink to="/admin/forms" className={tabClass}>
           Formuláře
         </NavLink>
+        <NavLink to="/admin/transformers" className={tabClass}>
+          Transformery
+        </NavLink>
+        <NavLink to="/admin/catalogs" className={tabClass}>
+          Katalogy
+        </NavLink>
         <NavLink to="/admin/spc" className={tabClass}>
           SPC
         </NavLink>

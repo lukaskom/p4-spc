@@ -11,6 +11,8 @@ import { AdminForms } from './routes/admin/AdminForms';
 import { AdminSpc } from './routes/admin/AdminSpc';
 import { AdminAqdef } from './routes/admin/AdminAqdef';
 import { AdminRaw } from './routes/admin/AdminRaw';
+import { AdminTransformers } from './routes/admin/AdminTransformers';
+import { AdminCatalogs } from './routes/admin/AdminCatalogs';
 
 export const router = createBrowserRouter([
   {
@@ -28,6 +30,8 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <AdminLabels /> },
           { path: 'forms', element: <AdminForms /> },
+          { path: 'transformers', element: <AdminTransformers /> },
+          { path: 'catalogs', element: <AdminCatalogs /> },
           { path: 'spc', element: <AdminSpc /> },
           { path: 'aqdef', element: <AdminAqdef /> },
           { path: 'raw', element: <AdminRaw /> },
