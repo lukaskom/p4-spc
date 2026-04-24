@@ -1,0 +1,32 @@
+{
+  "name": "@p4-spc/web",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.app.json --noEmit && vite build",
+    "dev": "vite",
+    "preview": "vite preview",
+    "clean": "rm -rf dist .turbo node_modules/.vite",
+    "lint": "eslint src",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit"
+  },
+  "dependencies": {
+    "@p4-spc/aqdef-core": "workspace:*",
+    "@p4-spc/spc-engine": "workspace:*",
+    "echarts": "^5.5.1",
+    "echarts-for-react": "^3.0.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.1.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0-beta.8",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "tailwindcss": "^4.0.0-beta.8",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5"
+  }
+}
